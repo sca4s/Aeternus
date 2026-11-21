@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AETERNUS — Labyrinth of Eternal Biomes</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23f3c6ff'/%3E%3Cstop offset='50%25' stop-color='%23a5b4fc'/%3E%3Cstop offset='100%25' stop-color='%236ee7b7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='32,4 58,20 58,44 32,60 6,44 6,20' fill='none' stroke='url(%23g)' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='10' fill='url(%23g)'/%3E%3Cpath d='M32 10 L32 22 M32 42 L32 54 M12 32 L22 32 M42 32 L52 32' stroke='url(%23g)' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <!-- INITIATION SCREEN 1: CONTROL MODE SELECTION (STRICTLY 2 MODES) -->
+  <section id="init-screen-1" class="overlay-screen active">
+    <div class="ui-card init-card" data-plague-card>
+      <div class="brand-header">
+        <div class="brand-emblem">
+          <svg viewBox="0 0 64 64" class="emblem-svg">
+            <polygon points="32,4 58,20 58,44 32,60 6,44 6,20" fill="none" stroke="currentColor" stroke-width="3.5" />
+            <polygon points="32,13 49,23 49,41 32,51 15,41 15,23" fill="none" stroke="currentColor" stroke-width="2" opacity="0.6" />
+            <circle cx="32" cy="32" r="7" fill="currentColor" />
+          </svg>
+        </div>
+        <h1 class="gothic-title">AETERNUS</h1>
+        <p class="subtitle">Select Your Interface Sanctuary</p>
+      </div>
+
+      <div class="mode-duo-grid">
+        <button id="select-touch-btn" class="mode-choice-card" type="button">
+          <span class="mode-icon">
+            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="6" y="2" width="12" height="20" rx="3" />
+              <circle cx="12" cy="18" r="1" />
+            </svg>
+          </span>
+          <span class="mode-title">Touch Control</span>
+          <span class="mode-desc">On-screen directional pad, jump trigger, and speed controls for mobile &amp; tablets</span>
+        </button>
+
+        <button id="select-keyboard-btn" class="mode-choice-card" type="button">
+          <span class="mode-icon">
+            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <path d="M6 9h2M10 9h2M14 9h2M18 9h.01M6 13h12" />
+            </svg>
+          </span>
+          <span class="mode-title">Keyboard Control</span>
+          <span class="mode-desc">Arrow keys to steer, Spacebar to jump obstacles, A/D for ball speed, W/S for sky cycle</span>
+        </button>
+      </div>
+
+      <div id="saved-session-banner" class="saved-banner hidden">
+        <span>Saved Chronicle Detected</span>
+        <button id="resume-saved-btn" class="pill-btn accent-btn" type="button">Resume Saved Game</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- INITIATION SCREEN 2: BIOME, GRAPHICS, THEME & 360 PREVIEW CUSTOMIZATION -->
+  <section id="init-screen-2" class="overlay-screen">
+    <div class="customizer-layout">
+      <!-- Top Bar -->
+      <div class="ui-card customizer-topbar" data-plague-card>
+        <button id="back-to-screen1-btn" class="pill-btn" type="button">← Control Mode</button>
+        <div class="topbar-title-group">
+          <h2 class="gothic-heading">SANCTUARY ARCHITECT</h2>
+          <span id="selected-device-badge" class="badge-pill">Keyboard Mode</span>
+        </div>
+        <div class="topbar-toggles">
+          <button id="theme-toggle-init" class="pill-btn" type="button">Theme: Dark</button>
+          <button id="render-style-toggle-init" class="pill-btn" type="button">Graphics: Modern 3D</button>
+          <button id="daynight-toggle-init" class="pill-btn" type="button">Sky: Night</button>
+        </div>
+      </div>
+
+      <!-- Middle Content Grid -->
+      <div class="customizer-grid">
+        <!-- Left Column: 12 Interactive 3D Biomes & Archetype Selection -->
+        <div class="ui-card biome-selector-card" data-plague-card>
+          <h3 class="section-label">12 Interactive 3D Biomes</h3>
+          <div id="biome-grid" class="biome-grid"></div>
+
+          <h3 class="section-label">Pursuit Archetype</h3>
+          <div id="archetype-grid" class="archetype-grid">
+            <button class="chip-btn active" data-archetype="ball" type="button">Cute Ball vs Sentinels</button>
+            <button class="chip-btn" data-archetype="runner" type="button">Person vs Shadow Entities</button>
+            <button class="chip-btn" data-archetype="bird" type="button">Songbird vs Vultures</button>
+            <button class="chip-btn" data-archetype="car" type="button">Racer vs Police Cruisers</button>
+          </div>
+        </div>
+
+        <!-- Center Column: Player 360° Interactive Preview & Touchable Swatches -->
+        <div class="ui-card preview-card" data-plague-card>
+          <div class="preview-header">
+            <h3 class="section-label">Avatar 360° Preview</h3>
+            <button id="player-autorotate-btn" class="mini-pill active" type="button">Auto-Rotate: ON</button>
+          </div>
+          <div id="player-preview-container" class="preview-canvas-wrap" title="Touch or drag to rotate 360°">
+            <canvas id="player-preview-canvas"></canvas>
+            <span class="drag-hint">Touch / Drag 360°</span>
+          </div>
+          <div class="swatch-label">Tap Avatar Color</div>
+          <div id="player-color-swatches" class="swatch-grid"></div>
+        </div>
+
+        <!-- Right Column: Pursuer Entity 360° Interactive Preview & Touchable Swatches -->
+        <div class="ui-card preview-card" data-plague-card>
+          <div class="preview-header">
+            <h3 class="section-label">Entity 360° Preview</h3>
+            <button id="entity-autorotate-btn" class="mini-pill active" type="button">Auto-Rotate: ON</button>
+          </div>
+          <div id="entity-preview-container" class="preview-canvas-wrap" title="Touch or drag to rotate 360°">
+            <canvas id="entity-preview-canvas"></canvas>
+            <span class="drag-hint">Touch / Drag 360°</span>
+          </div>
+          <div class="swatch-label">Tap Pursuer Color</div>
+          <div id="entity-color-swatches" class="swatch-grid"></div>
+        </div>
+      </div>
+
+      <!-- Bottom Launch Bar -->
+      <div class="ui-card customizer-footer" data-plague-card>
+        <div class="high-records-preview">
+          <span>Best Score: <strong id="init-high-score">0</strong></span>
+          <span>Longest Run: <strong id="init-high-time">00:00</strong></span>
+        </div>
+        <button id="launch-aeternus-btn" class="launch-btn" type="button">ENTER AETERNUS</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN NON-OVERLAPPING GAMEPLAY SHELL -->
+  <main id="game-shell" class="game-shell">
+    <!-- Left Dock: Collapsible UI Stack (Slides out left, lower cards move up smoothly) -->
+    <aside id="left-ui-dock" class="ui-dock left-dock">
+      <!-- Card 1: Score & Chronicle Stats -->
+      <div class="ui-card hud-module" id="hud-score-card" data-plague-card>
+        <div class="hud-card-header">
+          <span class="hud-title">CHRONICLE</span>
+          <button class="hide-module-btn" data-target="hud-score-card" title="Hide Panel" type="button">✕</button>
+        </div>
+        <div class="stat-row"><span>Score</span><strong id="hud-score">0</strong></div>
+        <div class="stat-row"><span>High Score</span><strong id="hud-high-score">0</strong></div>
+        <div class="stat-row"><span>Time</span><strong id="hud-time">00:00</strong></div>
+        <div class="stat-row"><span>Best Time</span><strong id="hud-high-time">00:00</strong></div>
+        <div class="stat-row"><span>Sanctum Level</span><strong id="hud-level">1</strong></div>
+      </div>
+
+      <!-- Card 2: Vitality, Shield & Revive Diamonds -->
+      <div class="ui-card hud-module" id="hud-vitality-card" data-plague-card>
+        <div class="hud-card-header">
+          <span class="hud-title">VITALITY &amp; RELICS</span>
+          <button class="hide-module-btn" data-target="hud-vitality-card" title="Hide Panel" type="button">✕</button>
+        </div>
+        <div class="health-bar-outer">
+          <div id="hud-health-fill" class="health-bar-inner"></div>
+        </div>
+        <div class="stat-row"><span>Health</span><strong id="hud-health-text">100%</strong></div>
+        <div class="stat-row"><span>Active Shields</span><strong id="hud-shields">0</strong></div>
+        <div class="stat-row"><span>Revive Diamonds</span><strong id="hud-diamonds">0</strong></div>
+        <div class="stat-row"><span>Power Status</span><strong id="hud-power-timer">Normal</strong></div>
+      </div>
+
+      <!-- Card 3: Velocity & Celestial Cycle Controls -->
+      <div class="ui-card hud-module" id="hud-kinetics-card" data-plague-card>
+        <div class="hud-card-header">
+          <span class="hud-title">KINETICS &amp; SKY</span>
+          <button class="hide-module-btn" data-target="hud-kinetics-card" title="Hide Panel" type="button">✕</button>
+        </div>
+        <div class="stat-row"><span>Avatar Speed (A/D)</span><strong id="hud-ball-speed">1.0x</strong></div>
+        <div class="stat-row"><span>Sky Cycle (W/S)</span><strong id="hud-cycle-speed">1.0x</strong></div>
+        <div class="stat-row"><span>Phase</span><strong id="hud-sky-phase">Night</strong></div>
+        <div class="mini-btn-row">
+          <button id="btn-speed-up" class="mini-pill" type="button">Speed + (A)</button>
+          <button id="btn-speed-down" class="mini-pill" type="button">Speed - (D)</button>
+        </div>
+        <div class="mini-btn-row">
+          <button id="btn-cycle-up" class="mini-pill" type="button">Sky + (W)</button>
+          <button id="btn-cycle-down" class="mini-pill" type="button">Sky - (S)</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Maze & 3D Biome Viewport (NEVER overlapped by HUD panels) -->
+    <section id="maze-stage-column" class="maze-stage-column">
+      <div id="maze-viewport" class="maze-viewport">
+        <canvas id="game-canvas"></canvas>
+        <canvas id="retro-2d-canvas" class="hidden"></canvas>
+
+        <!-- Non-intrusive Countdown Banner (Only active during 2s init / 3s countdown) -->
+        <div id="countdown-overlay" class="countdown-overlay hidden">
+          <div class="countdown-box">
+            <div id="countdown-label" class="countdown-label">AWAKENING SANCTUM</div>
+            <div id="countdown-number" class="countdown-number">3</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Dock: System Controls, Toggles & Touch Pad -->
+    <aside id="right-ui-dock" class="ui-dock right-dock">
+      <!-- Card 4: Aesthetics & System Actions -->
+      <div class="ui-card hud-module" id="hud-controls-card" data-plague-card>
+        <div class="hud-card-header">
+          <span class="hud-title">SANCTUM CONTROLS</span>
+          <button class="hide-module-btn" data-target="hud-controls-card" title="Hide Panel" type="button">✕</button>
+        </div>
+        <div class="control-stack">
+          <button id="hud-pause-btn" class="pill-btn accent-btn" type="button">Pause / Customize</button>
+          <button id="hud-theme-btn" class="pill-btn" type="button">Switch Theme</button>
+          <button id="hud-graphics-btn" class="pill-btn" type="button">Mode: Modern 3D</button>
+          <button id="hud-projection-btn" class="pill-btn" type="button">Path Projection: ON</button>
+        </div>
+      </div>
+
+      <!-- Card 5: Radar & Stage Progress -->
+      <div class="ui-card hud-module" id="hud-progress-card" data-plague-card>
+        <div class="hud-card-header">
+          <span class="hud-title">LABYRINTH GATE</span>
+          <button class="hide-module-btn" data-target="hud-progress-card" title="Hide Panel" type="button">✕</button>
+        </div>
+        <div class="stat-row"><span>Pellets Remaining</span><strong id="hud-pellets-left">0</strong></div>
+        <div class="stat-row"><span>Exit Gate</span><strong id="hud-gate-status" class="gate-locked">LOCKED</strong></div>
+        <div class="stat-row"><span>Biome</span><strong id="hud-biome-name">Royal Sanctum</strong></div>
+      </div>
+
+      <!-- Card 6: Touch Controls (Shown in Touch Mode or toggleable) -->
+      <div class="ui-card hud-module" id="hud-touch-card" data-plague-card>
+        <div class="hud-card-header">
+          <span class="hud-title">TOUCH CONTROLLER</span>
+          <button class="hide-module-btn" data-target="hud-touch-card" title="Hide Panel" type="button">✕</button>
+        </div>
+        <div class="dpad-grid">
+          <div></div>
+          <button id="touch-up" class="dpad-btn" type="button">▲</button>
+          <div></div>
+          <button id="touch-left" class="dpad-btn" type="button">◀</button>
+          <button id="touch-jump" class="dpad-btn jump-dpad" type="button">JUMP</button>
+          <button id="touch-right" class="dpad-btn" type="button">▶</button>
+          <div></div>
+          <button id="touch-down" class="dpad-btn" type="button">▼</button>
+          <div></div>
+        </div>
+      </div>
+
+      <!-- Restore All Hidden UI Button (Docked cleanly in peripheral track) -->
+      <button id="unhide-all-ui-btn" class="pill-btn restore-ui-btn hidden" type="button">
+        Restore All Hidden UI
+      </button>
+    </aside>
+  </main>
+
+  <!-- PAUSE & LIVE BIOME / SETTINGS CUSTOMIZATION MODAL -->
+  <section id="pause-modal" class="overlay-screen">
+    <div class="ui-card pause-card" data-plague-card>
+      <h2 class="gothic-heading">CHRONICLE PAUSED</h2>
+      <p class="subtitle">Progress automatically preserved in memory</p>
+
+      <div class="pause-section">
+        <span class="section-label">Switch Live 3D Biome</span>
+        <div id="pause-biome-grid" class="biome-grid compact"></div>
+      </div>
+
+      <div class="pause-toggles-row">
+        <button id="pause-theme-btn" class="pill-btn" type="button">Toggle Light / Dark</button>
+        <button id="pause-graphics-btn" class="pill-btn" type="button">Toggle Retro / Modern</button>
+        <button id="pause-daynight-btn" class="pill-btn" type="button">Toggle Day / Night</button>
+      </div>
+
+      <div class="pause-actions-row">
+        <button id="resume-game-btn" class="pill-btn accent-btn" type="button">Resume (3s Timer)</button>
+        <button id="open-customizer-btn" class="pill-btn" type="button">Edit Avatar &amp; Settings</button>
+        <button id="save-exit-home-btn" class="pill-btn" type="button">Save &amp; Exit to Home</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVIVE / GAME OVER MODAL -->
+  <section id="gameover-modal" class="overlay-screen">
+    <div class="ui-card pause-card" data-plague-card>
+      <h2 id="gameover-title" class="gothic-heading">VITALITY DEPLETED</h2>
+      <p id="gameover-desc" class="subtitle">The labyrinth sentinels overwhelmed your avatar.</p>
+      <div class="pause-actions-row">
+        <button id="revive-diamond-btn" class="pill-btn accent-btn hidden" type="button">Use 1 Diamond to Revive</button>
+        <button id="restart-stage-btn" class="pill-btn" type="button">New Labyrinth</button>
+        <button id="gameover-home-btn" class="pill-btn" type="button">Return to Sanctuary</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="main.js"></script>
+</body>
+</html>
