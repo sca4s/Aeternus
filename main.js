@@ -40,6 +40,12 @@
     entityColor: "#fb7185",
     playerAutoRotate: true,
     entityAutoRotate: true,
+    difficulty: "hard", // 'easy' (1) | 'medium' (2) | 'hard' (3) | 'impossible' (4)
+    enemyCount: 3,
+    topCameraMode: false,
+    camYawOffset: 0,
+    camPitchOffset: 0,
+    camZoomOffset: 0,
 
     // Gameplay metrics
     running: false,
@@ -53,6 +59,7 @@
     health: 100,
     shields: 1,
     diamonds: 1,
+    storedDiamonds: 1,
     powerTimer: 0,
     comboCount: 0,
     pelletsRemaining: 0,
@@ -67,6 +74,10 @@
       const data = JSON.parse(raw);
       state.highScore = data.highScore || 0;
       state.highTime = data.highTime || 0;
+      if (typeof data.storedDiamonds === "number") {
+        state.storedDiamonds = Math.max(0, data.storedDiamonds);
+        state.diamonds = state.storedDiamonds;
+      }
       if (data.savedSession) {
         document.getElementById("saved-session-banner").classList.remove("hidden");
       }
@@ -78,9 +89,11 @@
 
   function saveProgress(includeActiveSession = true) {
     try {
+      state.storedDiamonds = Math.max(0, state.diamonds);
       const payload = {
         highScore: Math.max(state.highScore, state.score),
         highTime: Math.max(state.highTime, Math.floor(state.elapsedSeconds)),
+        storedDiamonds: state.storedDiamonds,
         savedSession: includeActiveSession
           ? {
               score: state.score,
@@ -93,7 +106,9 @@
               archetype: state.archetype,
               playerColor: state.playerColor,
               entityColor: state.entityColor,
-              controlMode: state.controlMode
+              controlMode: state.controlMode,
+              difficulty: state.difficulty,
+              enemyCount: state.enemyCount
             }
           : null
       };
@@ -118,11 +133,39 @@
     document.getElementById("init-high-time").textContent = formatTime(state.highTime);
     document.getElementById("hud-high-score").textContent = state.highScore;
     document.getElementById("hud-high-time").textContent = formatTime(state.highTime);
+    const initDia = document.getElementById("init-diamonds");
+    if (initDia) initDia.textContent = state.diamonds;
+    const hudStoredDia = document.getElementById("hud-stored-diamonds");
+    if (hudStoredDia) hudStoredDia.textContent = state.diamonds;
+  }
+
+  // Helper to trigger the upper-left blurred plague spread on any selected button
+  function triggerButtonPlagueSpread(btn) {
+    if (!btn) return;
+    const isLight = state.theme === "light";
+    btn.style.setProperty("--btn-plague-color", isLight ? "rgba(13, 16, 27, 0.92)" : "rgba(255, 255, 255, 0.95)");
+    btn.classList.remove("plague-select");
+    void btn.offsetWidth;
+    btn.classList.add("plague-select");
   }
 
   // PLAGUE-STYLE TOP-LEFT BLURRED SPREAD THEME TRANSITION FOR EACH UI CARD INDIVIDUALLY
   function toggleThemeWithPlagueSpread() {
     state.theme = state.theme === "dark" ? "light" : "dark";
+    const globalWave = document.getElementById("global-plague-wave");
+    if (globalWave) {
+      globalWave.style.setProperty(
+        "--wave-core",
+        state.theme === "light" ? "rgba(255, 255, 255, 0.95)" : "rgba(13, 16, 27, 0.95)"
+      );
+      globalWave.style.setProperty(
+        "--wave-mid",
+        state.theme === "light" ? "rgba(224, 231, 255, 0.78)" : "rgba(30, 27, 75, 0.78)"
+      );
+      globalWave.classList.remove("active-wave");
+      void globalWave.offsetWidth;
+      globalWave.classList.add("active-wave");
+    }
     const cards = document.querySelectorAll("[data-plague-card]");
     cards.forEach((card, idx) => {
       card.style.setProperty(
@@ -134,6 +177,10 @@
       setTimeout(() => {
         card.classList.add("plague-spreading");
       }, idx * 55);
+    });
+
+    document.querySelectorAll(".biome-btn.active, .chip-btn.active, .mini-pill.active").forEach((btn) => {
+      triggerButtonPlagueSpread(btn);
     });
 
     setTimeout(() => {
@@ -168,6 +215,16 @@
       this.pedestal.position.y = -0.75;
       this.scene.add(this.pedestal);
 
+      // Decorative rim ring on pedestal so the full base looks grounded and framed
+      this.pedestalRim = new THREE.Mesh(
+        new THREE.TorusGeometry(1.22, 0.035, 12, 48),
+        new THREE.MeshStandardMaterial({ color: 0x6ee7b7, emissive: 0x6ee7b7, emissiveIntensity: 0.35 })
+      );
+      this.pedestalRim.rotation.x = Math.PI / 2;
+      this.pedestalRim.position.y = -0.58;
+      this.pedestal.position.y = -0.58;
+      this.scene.add(this.pedestalRim);
+
       this.pivot = new THREE.Group();
       this.scene.add(this.pivot);
       this.rebuildMesh();
@@ -181,6 +238,8 @@
       const colorHex = this.isPlayer ? state.playerColor : state.entityColor;
       const mesh = createArchetypeMesh(state.archetype, this.isPlayer, colorHex);
       mesh.scale.setScalar(1.35);
+      mesh.scale.setScalar(1.12);
+      mesh.position.y = 0.05;
       this.pivot.add(mesh);
     }
 
@@ -225,6 +284,10 @@
         if (this.canvas.width !== Math.floor(rect.width) || this.canvas.height !== Math.floor(rect.height)) {
           this.renderer.setSize(rect.width, rect.height, false);
           this.camera.aspect = rect.width / rect.height;
+          // Frame both the top of the model and 100% of the pedestal base on any aspect ratio
+          const aspectFactor = Math.max(1, 1.15 / Math.max(0.45, this.camera.aspect));
+          this.camera.position.set(0, 1.05, 4.9 * aspectFactor);
+          this.camera.lookAt(0, -0.1, 0);
           this.camera.updateProjectionMatrix();
         }
       }
@@ -236,8 +299,216 @@
     }
   }
 
+  // REALISTIC & AESTHETIC ARCHETYPE 3D MODEL FACTORY
+  function buildRealisticArchetypeMesh(archetype, isPlayer, hexColor) {
+    const group = new THREE.Group();
+    const primaryColor = new THREE.Color(hexColor);
+    const primaryMat = new THREE.MeshStandardMaterial({
+      color: primaryColor,
+      roughness: 0.22,
+      metalness: 0.35
+    });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.15, metalness: 0.85 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.35, metalness: 0.4 });
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x93c5fd,
+      roughness: 0.08,
+      metalness: 0.9,
+      transparent: true,
+      opacity: 0.72
+    });
+    const glowMat = new THREE.MeshBasicMaterial({ color: isPlayer ? 0x6ee7b7 : 0xf43f5e });
+
+    if (archetype === "ball") {
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 32), primaryMat);
+      group.add(core);
+      if (isPlayer) {
+        // Expressive glossy eyes with white highlights, blush cheeks & floating crown halo
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), darkMat);
+        const eyeR = eyeL.clone();
+        eyeL.position.set(-0.14, 0.1, 0.37);
+        eyeR.position.set(0.14, 0.1, 0.37);
+        const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        const pupilR = pupilL.clone();
+        pupilL.position.set(-0.12, 0.13, 0.43);
+        pupilR.position.set(0.16, 0.13, 0.43);
+        const blushMat = new THREE.MeshBasicMaterial({ color: 0xfda4af });
+        const blushL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 10), blushMat);
+        const blushR = blushL.clone();
+        blushL.scale.set(1.3, 0.7, 0.5);
+        blushR.scale.set(1.3, 0.7, 0.5);
+        blushL.position.set(-0.23, 0.0, 0.34);
+        blushR.position.set(0.23, 0.0, 0.34);
+        const halo = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.03, 12, 32), glowMat);
+        halo.rotation.x = Math.PI / 2;
+        halo.position.y = 0.52;
+        group.add(eyeL, eyeR, pupilL, pupilR, blushL, blushR, halo);
+      } else {
+        // Multi-ring gyroscopic Sentinel with forward-facing scanner eye
+        const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.035, 14, 36), chromeMat);
+        ring1.rotation.x = Math.PI / 2;
+        const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.025, 12, 32), glowMat);
+        ring2.rotation.y = Math.PI / 2;
+        const scanner = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.18, 20), glowMat);
+        scanner.rotation.x = Math.PI / 2;
+        scanner.position.set(0, 0.06, 0.38);
+        group.add(ring1, ring2, scanner);
+      }
+    } else if (archetype === "runner") {
+      // Articulated Humanoid Runner / Shadow Entity facing +Z
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.44, 18), primaryMat);
+      torso.position.y = 0.06;
+      const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.22), chromeMat);
+      chestPlate.position.set(0, 0.12, 0.02);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 24, 24), primaryMat);
+      head.position.y = 0.45;
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.14), isPlayer ? glassMat : glowMat);
+      visor.position.set(0, 0.46, 0.13);
+
+      const limbGeo = new THREE.CylinderGeometry(0.055, 0.045, 0.34, 12);
+      const armL = new THREE.Mesh(limbGeo, primaryMat);
+      const armR = new THREE.Mesh(limbGeo, primaryMat);
+      armL.position.set(-0.24, 0.08, 0.05);
+      armR.position.set(0.24, 0.08, -0.05);
+      armL.rotation.x = -0.35;
+      armR.rotation.x = 0.35;
+
+      const legL = new THREE.Mesh(limbGeo, darkMat);
+      const legR = new THREE.Mesh(limbGeo, darkMat);
+      legL.position.set(-0.1, -0.26, -0.05);
+      legR.position.set(0.1, -0.26, 0.06);
+      legL.rotation.x = 0.32;
+      legR.rotation.x = -0.32;
+
+      group.userData.limbs = { armL, armR, legL, legR };
+      group.add(torso, chestPlate, head, visor, armL, armR, legL, legR);
+
+      if (!isPlayer) {
+        // Shadow entity horns & shoulder spikes
+        const hornL = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 10), glowMat);
+        const hornR = hornL.clone();
+        hornL.position.set(-0.12, 0.65, 0);
+        hornR.position.set(0.12, 0.65, 0);
+        hornL.rotation.z = 0.3;
+        hornR.rotation.z = -0.3;
+        group.add(hornL, hornR);
+      }
+    } else if (archetype === "bird") {
+      // Sculpted Avian Songbird / Vulture Raptor facing +Z
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.26, 24, 24), primaryMat);
+      body.scale.set(0.95, 0.85, 1.45);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 20), isPlayer ? primaryMat : chromeMat);
+      head.position.set(0, 0.18, 0.32);
+
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), darkMat);
+      const eyeR = eyeL.clone();
+      eyeL.position.set(-0.12, 0.22, 0.42);
+      eyeR.position.set(0.12, 0.22, 0.42);
+
+      // Curved/sculpted beak facing forward (+Z)
+      const beakMat = new THREE.MeshStandardMaterial({ color: isPlayer ? 0xfacc15 : 0xf43f5e, roughness: 0.3 });
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.26, 14), beakMat);
+      beak.rotation.x = Math.PI / 2;
+      beak.position.set(0, 0.16, 0.54);
+
+      // Layered multi-feather wings
+      const wingL = new THREE.Group();
+      const wingR = new THREE.Group();
+      const innerWingGeo = new THREE.BoxGeometry(0.45, 0.04, 0.26);
+      const outerWingGeo = new THREE.BoxGeometry(0.36, 0.03, 0.2);
+      const wInL = new THREE.Mesh(innerWingGeo, primaryMat);
+      wInL.position.set(-0.22, 0, 0);
+      const wOutL = new THREE.Mesh(outerWingGeo, isPlayer ? chromeMat : darkMat);
+      wOutL.position.set(-0.52, 0.02, -0.04);
+      wOutL.rotation.y = 0.22;
+      wingL.add(wInL, wOutL);
+      wingL.position.set(-0.12, 0.08, 0.02);
+
+      const wInR = new THREE.Mesh(innerWingGeo, primaryMat);
+      wInR.position.set(0.22, 0, 0);
+      const wOutR = new THREE.Mesh(outerWingGeo, isPlayer ? chromeMat : darkMat);
+      wOutR.position.set(0.52, 0.02, -0.04);
+      wOutR.rotation.y = -0.22;
+      wingR.add(wInR, wOutR);
+      wingR.position.set(0.12, 0.08, 0.02);
+
+      // Fanned tail feathers at -Z
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.035, 0.28), isPlayer ? chromeMat : darkMat);
+      tail.position.set(0, 0.04, -0.44);
+      tail.rotation.x = 0.22;
+
+      group.userData.wings = { wingL, wingR };
+      group.add(body, head, eyeL, eyeR, beak, wingL, wingR, tail);
+    } else if (archetype === "car") {
+      // Realistic Aerodynamic Sports Racer / Police Interceptor facing +Z
+      const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.18, 1.08), primaryMat);
+      lowerBody.position.y = -0.04;
+
+      // Sculpted hood & cabin with windshield
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.2, 0.52), isPlayer ? darkMat : chromeMat);
+      cabin.position.set(0, 0.14, -0.04);
+      const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.16, 0.18), glassMat);
+      windshield.position.set(0, 0.15, 0.2);
+      windshield.rotation.x = -0.35;
+
+      // Rear aerodynamic wing spoiler at -Z
+      const spoilerWing = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.04, 0.14), darkMat);
+      spoilerWing.position.set(0, 0.22, -0.48);
+
+      // Glowing Headlights at +Z & Taillight strip at -Z
+      const headLightMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+      const hlL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.04), headLightMat);
+      const hlR = hlL.clone();
+      hlL.position.set(-0.21, -0.01, 0.54);
+      hlR.position.set(0.21, -0.01, 0.54);
+
+      const tailLightMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+      const tailBar = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.04), tailLightMat);
+      tailBar.position.set(0, 0.0, -0.54);
+
+      // 4 Detailed Alloy Wheels with Rims
+      const wheelGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.09, 20);
+      wheelGeo.rotateZ(Math.PI / 2);
+      const rimGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.096, 12);
+      rimGeo.rotateZ(Math.PI / 2);
+      const wheelPositions = [
+        [-0.33, -0.13, 0.33],
+        [0.33, -0.13, 0.33],
+        [-0.33, -0.13, -0.33],
+        [0.33, -0.13, -0.33]
+      ];
+      wheelPositions.forEach(([wx, wy, wz]) => {
+        const tire = new THREE.Mesh(wheelGeo, darkMat);
+        const rim = new THREE.Mesh(rimGeo, chromeMat);
+        tire.position.set(wx, wy, wz);
+        rim.position.set(wx, wy, wz);
+        group.add(tire, rim);
+      });
+
+      group.add(lowerBody, cabin, windshield, spoilerWing, hlL, hlR, tailBar);
+
+      if (!isPlayer) {
+        // Police Cruiser lightbar & front bullbar at +Z
+        const bullbar = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.14, 0.06), darkMat);
+        bullbar.position.set(0, -0.05, 0.57);
+        const sirenBase = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.04, 0.12), chromeMat);
+        sirenBase.position.set(0, 0.26, -0.02);
+        const sirenBlue = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.07, 0.1), new THREE.MeshBasicMaterial({ color: 0x3b82f6 }));
+        const sirenRed = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.07, 0.1), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+        sirenBlue.position.set(-0.12, 0.29, -0.02);
+        sirenRed.position.set(0.12, 0.29, -0.02);
+        group.userData.sirens = { sirenBlue, sirenRed };
+        group.add(bullbar, sirenBase, sirenBlue, sirenRed);
+      }
+    }
+    return group;
+  }
+
   // ARCHETYPE 3D MODEL FACTORY (Cute Ball, Runner Person, Bird/Vulture, Car/Police)
   function createArchetypeMesh(archetype, isPlayer, hexColor) {
+    if (typeof buildRealisticArchetypeMesh === "function") {
+      return buildRealisticArchetypeMesh(archetype, isPlayer, hexColor);
+    }
     const group = new THREE.Group();
     const primaryMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hexColor),
@@ -317,10 +588,14 @@
     y: 0,
     vy: 0,
     jumping: false,
-    mesh: null
+    mesh: null,
+    targetX: 1,
+    targetZ: 1,
+    visualAngle: 0
   };
 
   let enemies = [];
+  let biomeAnimatedProps = [];
 
   // THREE.JS MAIN SCENE
   const gameCanvas = document.getElementById("game-canvas");
@@ -330,11 +605,14 @@
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 220);
   const renderer = new THREE.WebGLRenderer({ canvas: gameCanvas, antialias: true });
+  renderer.shadowMap.enabled = true;
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
   const sunLight = new THREE.DirectionalLight(0xfffbeb, 0.95);
   sunLight.position.set(16, 28, 18);
-  scene.add(ambientLight, sunLight);
+  const rimLight = new THREE.PointLight(0xd8b4fe, 0.85, 65);
+  rimLight.position.set(-14, 15, -14);
+  scene.add(ambientLight, sunLight, rimLight);
 
   const worldGroup = new THREE.Group();
   const biomeGroup = new THREE.Group();
@@ -343,6 +621,175 @@
   const projectionGroup = new THREE.Group();
   worldGroup.add(biomeGroup, mazeGroup, itemsGroup, projectionGroup);
   scene.add(worldGroup);
+
+  // REALISTIC ARCHITECTURAL & NATURAL 3D BIOME ENHANCER FOR ALL 12 BIOMES
+  function addRealisticBiomeDetails(b) {
+    biomeAnimatedProps = [];
+    const marbleMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.15 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.18, metalness: 0.88 });
+    const velvetMat = new THREE.MeshStandardMaterial({ color: 0x9f1239, roughness: 0.85, metalness: 0.05 });
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.75, metalness: 0.15 });
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x06b6d4,
+      roughness: 0.08,
+      metalness: 0.65,
+      transparent: true,
+      opacity: 0.82
+    });
+
+    // Sanctuary Inner Plaza Platform directly under the labyrinth
+    const plaza = new THREE.Mesh(
+      new THREE.BoxGeometry(GRID_SIZE + 1.4, 0.35, GRID_SIZE + 1.4),
+      new THREE.MeshStandardMaterial({ color: b.floor, roughness: 0.4, metalness: 0.3 })
+    );
+    plaza.position.y = -0.55;
+    biomeGroup.add(plaza);
+
+    // Ambient Starfield / Floating Atmospheric Motes
+    const moteMat = new THREE.MeshBasicMaterial({ color: b.accent, transparent: true, opacity: 0.75 });
+    for (let m = 0; m < 28; m++) {
+      const ang = (m / 28) * Math.PI * 2;
+      const rad = 10 + (m % 5) * 2.8;
+      const mote = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), moteMat);
+      mote.position.set(Math.cos(ang) * rad, 1.2 + (m % 4) * 1.4, Math.sin(ang) * rad);
+      biomeGroup.add(mote);
+      biomeAnimatedProps.push({ mesh: mote, type: "float", baseY: mote.position.y, phase: m });
+    }
+
+    if (b.id === "royal") {
+      // Velvet carpet inlay & concentric golden rings + floating crown jewels
+      const carpet = new THREE.Mesh(new THREE.CylinderGeometry(11.5, 11.5, 0.08, 48), velvetMat);
+      carpet.position.y = -0.36;
+      const goldRing1 = new THREE.Mesh(new THREE.TorusGeometry(12.2, 0.18, 16, 64), goldMat);
+      goldRing1.rotation.x = Math.PI / 2;
+      goldRing1.position.y = -0.32;
+      const goldRing2 = new THREE.Mesh(new THREE.TorusGeometry(16.2, 0.24, 16, 64), goldMat);
+      goldRing2.rotation.x = Math.PI / 2;
+      goldRing2.position.y = -0.32;
+      biomeGroup.add(carpet, goldRing1, goldRing2);
+    } else if (b.id === "cyberdrift") {
+      // Synthwave horizon sun disc & holographic drift portals
+      const sunDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(9.5, 36),
+        new THREE.MeshBasicMaterial({ color: 0xff2a85, side: THREE.DoubleSide })
+      );
+      sunDisc.position.set(0, 8, -24);
+      biomeGroup.add(sunDisc);
+      for (let p = 0; p < 4; p++) {
+        const portal = new THREE.Mesh(
+          new THREE.TorusGeometry(2.2, 0.12, 16, 36),
+          new THREE.MeshBasicMaterial({ color: 0x00f5d4 })
+        );
+        const a = (p / 4) * Math.PI * 2;
+        portal.position.set(Math.cos(a) * 13.5, 2.4, Math.sin(a) * 13.5);
+        portal.lookAt(0, 2.4, 0);
+        biomeGroup.add(portal);
+        biomeAnimatedProps.push({ mesh: portal, type: "spin", speed: 1.5 });
+      }
+    } else if (b.id === "angelic") {
+      // Concentric golden halos & fluffy multi-sphere cloud pillows
+      for (let h = 1; h <= 3; h++) {
+        const halo = new THREE.Mesh(new THREE.TorusGeometry(10 + h * 3.2, 0.16, 16, 64), goldMat);
+        halo.rotation.x = Math.PI / 2;
+        halo.position.y = 3.5 + h * 1.1;
+        biomeGroup.add(halo);
+        biomeAnimatedProps.push({ mesh: halo, type: "spinZ", speed: 0.3 * h });
+      }
+    } else if (b.id === "lagoon") {
+      // Turquoise translucent ocean lagoon, sandy island atoll & pastel beach parasols
+      const ocean = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, 0.45, 48), waterMat);
+      ocean.position.y = -0.72;
+      const atoll = new THREE.Mesh(
+        new THREE.CylinderGeometry(13.2, 14.8, 0.55, 40),
+        new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.8 })
+      );
+      atoll.position.y = -0.62;
+      biomeGroup.add(ocean, atoll);
+      for (let u = 0; u < 6; u++) {
+        const a = (u / 6) * Math.PI * 2 + 0.3;
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4, 10), marbleMat);
+        const umbrella = new THREE.Mesh(
+          new THREE.ConeGeometry(1.5, 0.7, 12),
+          new THREE.MeshStandardMaterial({ color: u % 2 === 0 ? 0xf472b6 : 0x38bdf8 })
+        );
+        pole.position.set(Math.cos(a) * 12.6, 0.8, Math.sin(a) * 12.6);
+        umbrella.position.set(Math.cos(a) * 12.6, 2.0, Math.sin(a) * 12.6);
+        biomeGroup.add(pole, umbrella);
+      }
+    } else if (b.id === "lofi") {
+      // Oversized steaming coffee mug with saucer, spinning vinyl turntable & overhead string lamps
+      const saucer = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 2.6, 0.25, 32), marbleMat);
+      saucer.position.set(-14, -0.3, -10);
+      const bigMug = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.1, 1.9, 3.6, 32),
+        new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.25 })
+      );
+      bigMug.position.set(-14, 1.5, -10);
+      const platter = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 0.14, 36), new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.2 }));
+      platter.position.set(14, -0.25, -10);
+      const label = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.16, 24), new THREE.MeshBasicMaterial({ color: 0xf43f5e }));
+      label.position.set(14, -0.24, -10);
+      biomeGroup.add(saucer, bigMug, platter, label);
+    } else if (b.id === "gothicbalcony" || b.id === "gothiccastle") {
+      // Stained-glass rose window, curtain walls & battlements
+      const roseFrame = new THREE.Mesh(new THREE.TorusGeometry(5.5, 0.35, 16, 48), stoneMat);
+      roseFrame.position.set(0, 7.5, -18.5);
+      const roseGlass = new THREE.Mesh(
+        new THREE.CircleGeometry(5.3, 32),
+        new THREE.MeshBasicMaterial({ color: 0xc084fc, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+      );
+      roseGlass.position.set(0, 7.5, -18.5);
+      biomeGroup.add(roseFrame, roseGlass);
+    } else if (b.id === "forest") {
+      // Winding stream & mossy boulders
+      const stream = new THREE.Mesh(new THREE.BoxGeometry(36, 0.1, 3.2), waterMat);
+      stream.position.set(0, -0.45, -13.5);
+      biomeGroup.add(stream);
+    } else if (b.id === "cyberterrace") {
+      // Surrounding metropolis skyscrapers with glowing neon window strips
+      for (let s = 0; s < 14; s++) {
+        const a = (s / 14) * Math.PI * 2;
+        const h = 8 + (s % 4) * 4.5;
+        const bldg = new THREE.Mesh(
+          new THREE.BoxGeometry(3.2, h, 3.2),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.6 })
+        );
+        bldg.position.set(Math.cos(a) * 21, h / 2 - 2, Math.sin(a) * 21);
+        const neonTrim = new THREE.Mesh(
+          new THREE.BoxGeometry(3.3, 0.25, 3.3),
+          new THREE.MeshBasicMaterial({ color: s % 2 === 0 ? 0x38bdf8 : 0xe879f9 })
+        );
+        neonTrim.position.set(bldg.position.x, h - 2.2, bldg.position.z);
+        biomeGroup.add(bldg, neonTrim);
+      }
+    } else if (b.id === "desert") {
+      // Oasis pool, sandstone arch & saguaro cacti
+      const oasis = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.2, 0.15, 32), waterMat);
+      oasis.position.set(-14, -0.42, 11);
+      const arch = new THREE.Mesh(
+        new THREE.TorusGeometry(4.8, 0.95, 14, 32, Math.PI),
+        new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.85 })
+      );
+      arch.position.set(0, -0.4, -17.5);
+      biomeGroup.add(oasis, arch);
+    } else if (b.id === "reef") {
+      // Underwater seabed dome & rising translucent bubble rings
+      const waterDome = new THREE.Mesh(new THREE.CylinderGeometry(27, 27, 0.3, 40), waterMat);
+      waterDome.position.y = -0.5;
+      biomeGroup.add(waterDome);
+    } else if (b.id === "alpine") {
+      // Snow caps on distant mountain range peaks
+      const snowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const px = Math.cos(angle) * 15.5;
+        const pz = Math.sin(angle) * 15.5;
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(1.55, 2.8, 7), snowMat);
+        cap.position.set(px, 4.9, pz);
+        biomeGroup.add(cap);
+      }
+    }
+  }
 
   // BUILD THE 12 INTERACTIVE 3D BIOMES SURROUNDING THE LABYRINTH
   function build3DBiomeEnvironment(biomeIdx) {
@@ -428,6 +875,7 @@
         biomeGroup.add(mtn);
       }
     }
+    addRealisticBiomeDetails(b);
   }
 
   // RANDOM SOLVABLE MAZE GENERATOR WITH HIGHLIGHTED EXIT GATES & OBSTACLES
@@ -587,6 +1035,9 @@
     player.y = 0;
     player.vy = 0;
     player.jumping = false;
+    player.targetX = 1;
+    player.targetZ = 1;
+    player.visualAngle = 0;
 
     if (player.mesh) worldGroup.remove(player.mesh);
     player.mesh = createArchetypeMesh(state.archetype, true, state.playerColor);
@@ -594,15 +1045,17 @@
     player.mesh.position.set(pStart.wx, 0, pStart.wz);
     worldGroup.add(player.mesh);
 
-    // Spawn Pursuing Entities
+    // Spawn Pursuing Entities (1 for Easy, 2 for Medium, 3 for Hard, 4 for Impossible)
     enemies.forEach((e) => worldGroup.remove(e.mesh));
     enemies = [];
     const spawnCoords = [
       [GRID_SIZE - 2, 1],
       [1, GRID_SIZE - 2],
-      [mid, 1]
+      [mid, 1],
+      [GRID_SIZE - 2, mid]
     ];
-    spawnCoords.forEach(([ex, ez]) => {
+    spawnCoords.slice(0, state.enemyCount).forEach(([ex, ez]) => {
+      mazeGrid[ez][ex] = 0;
       const eMesh = createArchetypeMesh(state.archetype, false, state.entityColor);
       const ePos = gridToWorld(ex, ez);
       eMesh.position.set(ePos.wx, 0, ePos.wz);
@@ -610,8 +1063,14 @@
       enemies.push({
         x: ex,
         z: ez,
+        fromX: ex,
+        fromZ: ez,
+        toX: ex,
+        toZ: ez,
+        moveProgress: 1,
         dirX: 0,
         dirZ: 1,
+        visualAngle: 0,
         mesh: eMesh,
         stunned: 0
       });
@@ -696,6 +1155,15 @@
     document.getElementById("hud-health-fill").style.width = `${Math.max(0, state.health)}%`;
     document.getElementById("hud-shields").textContent = state.shields;
     document.getElementById("hud-diamonds").textContent = state.diamonds;
+    const hudStored = document.getElementById("hud-stored-diamonds");
+    if (hudStored) hudStored.textContent = state.diamonds;
+    const initDia = document.getElementById("init-diamonds");
+    if (initDia) initDia.textContent = state.diamonds;
+    const hudDiff = document.getElementById("hud-difficulty");
+    if (hudDiff) {
+      const cap = state.difficulty.charAt(0).toUpperCase() + state.difficulty.slice(1);
+      hudDiff.textContent = `${cap} (${state.enemyCount})`;
+    }
     document.getElementById("hud-power-timer").textContent =
       state.powerTimer > 0 ? `Empowered (${Math.ceil(state.powerTimer)}s)` : "Normal";
     document.getElementById("hud-ball-speed").textContent = `${state.ballSpeedMultiplier.toFixed(1)}x`;
@@ -719,6 +1187,35 @@
   function canMoveTo(gx, gz) {
     if (gz < 0 || gz >= GRID_SIZE || gx < 0 || gx >= GRID_SIZE) return false;
     return mazeGrid[gz][gx] === 0;
+  }
+
+  // Shortest-angle interpolation so avatars and pursuers smoothly face the exact path of travel
+  function lerpAngle(current, target, factor) {
+    let diff = ((target - current + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (diff < -Math.PI) diff += Math.PI * 2;
+    return current + diff * factor;
+  }
+
+  // Animate archetype sub-parts (flapping bird wings, swinging runner limbs, flashing police sirens)
+  function animateArchetypeSubparts(mesh, timeSec, isMoving) {
+    if (!mesh || !mesh.userData) return;
+    if (mesh.userData.wings) {
+      const flap = Math.sin(timeSec * 14) * 0.45;
+      mesh.userData.wings.wingL.rotation.z = flap;
+      mesh.userData.wings.wingR.rotation.z = -flap;
+    }
+    if (mesh.userData.limbs) {
+      const swing = isMoving ? Math.sin(timeSec * 12) * 0.65 : 0;
+      mesh.userData.limbs.armL.rotation.x = swing;
+      mesh.userData.limbs.armR.rotation.x = -swing;
+      mesh.userData.limbs.legL.rotation.x = -swing;
+      mesh.userData.limbs.legR.rotation.x = swing;
+    }
+    if (mesh.userData.sirens) {
+      const flash = Math.floor(timeSec * 8) % 2 === 0;
+      mesh.userData.sirens.sirenBlue.visible = flash;
+      mesh.userData.sirens.sirenRed.visible = !flash;
+    }
   }
 
   // RETRO 2D PIXELATED RENDERER (When user switches to Retro 2D mode)
@@ -800,10 +1297,170 @@
     ctx.arc(offsetX + (player.x + 0.5) * tile, offsetY + (player.z + 0.5) * tile, tile * jumpScale, 0, Math.PI * 2);
     ctx.fill();
 
-    // Enemies
+    // Enemies with directional heading indicator
     enemies.forEach((e) => {
+      const ecx = offsetX + (e.x + 0.5) * tile;
+      const ecy = offsetY + (e.z + 0.5) * tile;
       ctx.fillStyle = state.powerTimer > 0 ? "#60a5fa" : state.entityColor;
       ctx.fillRect(offsetX + (e.x + 0.18) * tile, offsetY + (e.z + 0.18) * tile, tile * 0.64, tile * 0.64);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(ecx + e.dirX * tile * 0.18, ecy + e.dirZ * tile * 0.18, tile * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // SMOOTH TARGET-TILE MOVEMENT STEPPER FOR PLAYER & ENEMIES (NO SNAP-BACK GLITCHES)
+  function updateSmoothEntities(dt, nowSec) {
+    const speed = 4.4 * state.ballSpeedMultiplier;
+
+    // 1. Player Smooth Tile-to-Tile Navigation
+    // Allow instant 180-degree reversal along current corridor
+    if (
+      (player.dirX !== 0 || player.dirZ !== 0) &&
+      player.nextDirX === -player.dirX &&
+      player.nextDirZ === -player.dirZ
+    ) {
+      const prevTargetX = player.targetX;
+      const prevTargetZ = player.targetZ;
+      player.targetX = prevTargetX - player.dirX;
+      player.targetZ = prevTargetZ - player.dirZ;
+      player.dirX = player.nextDirX;
+      player.dirZ = player.nextDirZ;
+    }
+
+    let remDist = speed * dt;
+    while (remDist > 0) {
+      const toTargetX = player.targetX - player.x;
+      const toTargetZ = player.targetZ - player.z;
+      const distToTarget = Math.hypot(toTargetX, toTargetZ);
+
+      if (distToTarget <= remDist) {
+        // Reached target tile center cleanly
+        player.x = player.targetX;
+        player.z = player.targetZ;
+        remDist -= distToTarget;
+
+        // Check queued turn first, then continue straight
+        if (
+          (player.nextDirX !== 0 || player.nextDirZ !== 0) &&
+          canMoveTo(player.x + player.nextDirX, player.z + player.nextDirZ)
+        ) {
+          player.dirX = player.nextDirX;
+          player.dirZ = player.nextDirZ;
+          player.targetX = player.x + player.dirX;
+          player.targetZ = player.z + player.dirZ;
+        } else if (
+          (player.dirX !== 0 || player.dirZ !== 0) &&
+          canMoveTo(player.x + player.dirX, player.z + player.dirZ)
+        ) {
+          player.targetX = player.x + player.dirX;
+          player.targetZ = player.z + player.dirZ;
+        } else {
+          player.dirX = 0;
+          player.dirZ = 0;
+          break;
+        }
+      } else {
+        player.x += (toTargetX / distToTarget) * remDist;
+        player.z += (toTargetZ / distToTarget) * remDist;
+        remDist = 0;
+      }
+    }
+
+    const pWorld = gridToWorld(player.x, player.z);
+    player.mesh.position.set(pWorld.wx, player.y, pWorld.wz);
+    if (player.dirX !== 0 || player.dirZ !== 0) {
+      const targetAngle = Math.atan2(player.dirX, player.dirZ);
+      player.visualAngle = lerpAngle(player.visualAngle || 0, targetAngle, Math.min(1, dt * 18));
+      player.mesh.rotation.y = player.visualAngle;
+    }
+    animateArchetypeSubparts(player.mesh, nowSec, player.dirX !== 0 || player.dirZ !== 0);
+
+    // 2. Pursuer Entities Smooth Tile-to-Tile Navigation & Forward Facing Alignment
+    enemies.forEach((e) => {
+      if (e.stunned > 0) {
+        e.stunned -= dt;
+        return;
+      }
+      const eSpeed = (state.powerTimer > 0 ? 1.95 : 2.85) + (state.level - 1) * 0.14;
+      let eStep = eSpeed * dt;
+
+      while (eStep > 0) {
+        const dx = e.toX - e.x;
+        const dz = e.toZ - e.z;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist <= eStep) {
+          e.x = e.toX;
+          e.z = e.toZ;
+          eStep -= dist;
+
+          const possible = [
+            [0, -1],
+            [1, 0],
+            [0, 1],
+            [-1, 0]
+          ].filter(([nx, nz]) => canMoveTo(e.x + nx, e.z + nz));
+
+          if (possible.length > 0) {
+            const nonReverse = possible.filter(([nx, nz]) => !(nx === -e.dirX && nz === -e.dirZ));
+            const choices = nonReverse.length > 0 ? nonReverse : possible;
+            choices.sort((a, b) => {
+              const distA = Math.hypot(e.x + a[0] - player.x, e.z + a[1] - player.z);
+              const distB = Math.hypot(e.x + b[0] - player.x, e.z + b[1] - player.z);
+              return state.powerTimer > 0 ? distB - distA : distA - distB;
+            });
+            const pick = Math.random() < 0.74 ? choices[0] : choices[Math.floor(Math.random() * choices.length)];
+            e.dirX = pick[0];
+            e.dirZ = pick[1];
+            e.fromX = e.x;
+            e.fromZ = e.z;
+            e.toX = e.x + e.dirX;
+            e.toZ = e.z + e.dirZ;
+          } else {
+            break;
+          }
+        } else {
+          e.x += (dx / dist) * eStep;
+          e.z += (dz / dist) * eStep;
+          eStep = 0;
+        }
+      }
+
+      const ew = gridToWorld(e.x, e.z);
+      e.mesh.position.set(ew.wx, 0, ew.wz);
+
+      // Smoothly rotate pursuer so it faces directly down the road of travel
+      if (e.dirX !== 0 || e.dirZ !== 0) {
+        const targetHeading = Math.atan2(e.dirX, e.dirZ);
+        e.visualAngle = lerpAngle(
+          typeof e.visualAngle === "number" ? e.visualAngle : targetHeading,
+          targetHeading,
+          Math.min(1, dt * 16)
+        );
+        e.mesh.rotation.y = e.visualAngle;
+      }
+      animateArchetypeSubparts(e.mesh, nowSec, true);
+
+      // Collision with Player
+      if (Math.hypot(player.x - e.x, player.z - e.z) < 0.52 && player.y < 0.45) {
+        if (state.powerTimer > 0) {
+          state.comboCount++;
+          const pts = 200 * Math.pow(2, state.comboCount - 1);
+          state.score += pts;
+          e.x = GRID_SIZE - 2;
+          e.z = 1;
+          e.fromX = e.x;
+          e.fromZ = e.z;
+          e.toX = e.x;
+          e.toZ = e.z;
+          e.stunned = 3;
+        } else {
+          applyDamage(34);
+          e.stunned = 1.5;
+        }
+      }
     });
   }
 
@@ -816,12 +1473,24 @@
     requestAnimationFrame(animate);
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
+    const nowSec = now * 0.001;
 
     // Render 360° Preview Studios when Screen 2 is open
     if (document.getElementById("init-screen-2").classList.contains("active")) {
       previewPlayerStudio.render();
       previewEntityStudio.render();
     }
+
+    // Animate Biome Props (floating motes, portals, halos)
+    biomeAnimatedProps.forEach((prop) => {
+      if (prop.type === "float") {
+        prop.mesh.position.y = prop.baseY + Math.sin(nowSec * 2 + prop.phase) * 0.35;
+      } else if (prop.type === "spin") {
+        prop.mesh.rotation.z += dt * prop.speed;
+      } else if (prop.type === "spinZ") {
+        prop.mesh.rotation.z += dt * prop.speed;
+      }
+    });
 
     // Update Celestial Day/Night Cycle
     const b = BIOMES[state.biomeIndex];
@@ -856,7 +1525,9 @@
         }
       }
 
-      // Smooth Grid Movement
+      // Smooth Grid Movement (delegated to glitch-free tile interpolator)
+      const useSmoothStepper = true;
+      if (!useSmoothStepper) {
       const speed = 4.2 * state.ballSpeedMultiplier;
       const snapX = Math.round(player.x);
       const snapZ = Math.round(player.z);
@@ -887,6 +1558,9 @@
       if (player.dirX !== 0 || player.dirZ !== 0) {
         player.mesh.rotation.y = Math.atan2(player.dirX, player.dirZ);
       }
+      } else {
+        updateSmoothEntities(dt, nowSec);
+      }
 
       updatePathProjection();
 
@@ -913,7 +1587,11 @@
             d.active = false;
             d.mesh.visible = false;
             if (d.type === "shield") state.shields++;
-            if (d.type === "diamond") state.diamonds++;
+            if (d.type === "diamond") {
+              state.diamonds++;
+              state.storedDiamonds = state.diamonds;
+              saveProgress(true);
+            }
             if (d.type === "food") state.health = Math.min(100, state.health + 30);
             if (d.type === "power") {
               state.powerTimer = 8;
@@ -952,7 +1630,8 @@
         rebuildMazeScene();
       }
 
-      // Move Pursuing Entities
+      // Move Pursuing Entities (Legacy block bypassed when smooth stepper is active)
+      if (!useSmoothStepper) {
       enemies.forEach((e) => {
         if (e.stunned > 0) {
           e.stunned -= dt;
@@ -1008,11 +1687,12 @@
           }
         }
       });
+      }
 
       updateHUD();
     }
 
-    // Camera Follow & Render
+    // Camera Follow & Interactive Orbit / Tilt / Top-Position Adjustment
     const rect = gameCanvas.parentElement.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       if (gameCanvas.width !== Math.floor(rect.width) || gameCanvas.height !== Math.floor(rect.height)) {
@@ -1024,11 +1704,26 @@
     }
 
     if (player.mesh) {
-      camera.position.lerp(
-        new THREE.Vector3(player.mesh.position.x * 0.55, 13.5, player.mesh.position.z * 0.55 + 10.5),
-        0.08
-      );
-      camera.lookAt(player.mesh.position.x * 0.3, 0, player.mesh.position.z * 0.3);
+      if (state.topCameraMode) {
+        // Direct overhead Top Position camera viewing the entire labyrinth
+        const topDist = Math.max(18.5, 20.5 + state.camZoomOffset);
+        const targetCamPos = new THREE.Vector3(
+          Math.sin(state.camYawOffset) * 0.5,
+          topDist,
+          Math.cos(state.camYawOffset) * 0.5
+        );
+        camera.position.lerp(targetCamPos, 0.12);
+        camera.lookAt(0, 0, 0);
+      } else {
+        const radius = Math.max(6, Math.min(22, 10.5 + state.camZoomOffset));
+        const height = Math.max(5.5, Math.min(24, 13.5 + state.camPitchOffset));
+        const focusX = player.mesh.position.x * 0.35;
+        const focusZ = player.mesh.position.z * 0.35;
+        const camX = player.mesh.position.x * 0.55 + Math.sin(state.camYawOffset) * radius;
+        const camZ = player.mesh.position.z * 0.55 + Math.cos(state.camYawOffset) * radius;
+        camera.position.lerp(new THREE.Vector3(camX, height, camZ), 0.1);
+        camera.lookAt(focusX, 0, focusZ);
+      }
     }
 
     if (state.renderStyle === "retro") {
@@ -1059,6 +1754,25 @@
       document.getElementById("gameover-modal").classList.add("active");
     }
     updateHUD();
+  }
+
+  // Synchronize Swatch Locks so Player & Pursuer Entity Never Share the Same Color
+  function syncDistinctColorSwatches() {
+    const pSwatches = document.getElementById("player-color-swatches");
+    const eSwatches = document.getElementById("entity-color-swatches");
+    if (!pSwatches || !eSwatches) return;
+
+    Array.from(pSwatches.children).forEach((btn, idx) => {
+      const hex = SWATCH_COLORS[idx];
+      btn.classList.toggle("active", hex === state.playerColor);
+      btn.classList.toggle("locked-swatch", hex === state.entityColor);
+    });
+
+    Array.from(eSwatches.children).forEach((btn, idx) => {
+      const hex = SWATCH_COLORS[idx];
+      btn.classList.toggle("active", hex === state.entityColor);
+      btn.classList.toggle("locked-swatch", hex === state.playerColor);
+    });
   }
 
   // UI POPULATION & EVENT WIRING
@@ -1092,9 +1806,11 @@
       s1.className = `color-swatch ${hex === state.playerColor ? "active" : ""}`;
       s1.style.background = hex;
       s1.addEventListener("click", () => {
+        if (hex === state.entityColor) return; // Prevent identical color as enemies
         state.playerColor = hex;
         Array.from(pSwatches.children).forEach((c) => c.classList.remove("active"));
         s1.classList.add("active");
+        syncDistinctColorSwatches();
         previewPlayerStudio.rebuildMesh();
       });
       pSwatches.appendChild(s1);
@@ -1104,19 +1820,29 @@
       s2.className = `color-swatch ${hex === state.entityColor ? "active" : ""}`;
       s2.style.background = hex;
       s2.addEventListener("click", () => {
+        if (hex === state.playerColor) return; // Prevent identical color as player
         state.entityColor = hex;
         Array.from(eSwatches.children).forEach((c) => c.classList.remove("active"));
         s2.classList.add("active");
+        syncDistinctColorSwatches();
         previewEntityStudio.rebuildMesh();
       });
       eSwatches.appendChild(s2);
     });
+
+    syncDistinctColorSwatches();
   }
 
   function selectBiome(idx) {
     state.biomeIndex = idx;
-    document.querySelectorAll("#biome-grid .biome-btn").forEach((b, i) => b.classList.toggle("active", i === idx));
-    document.querySelectorAll("#pause-biome-grid .biome-btn").forEach((b, i) => b.classList.toggle("active", i === idx));
+    document.querySelectorAll("#biome-grid .biome-btn").forEach((b, i) => {
+      b.classList.toggle("active", i === idx);
+      if (i === idx) triggerButtonPlagueSpread(b);
+    });
+    document.querySelectorAll("#pause-biome-grid .biome-btn").forEach((b, i) => {
+      b.classList.toggle("active", i === idx);
+      if (i === idx) triggerButtonPlagueSpread(b);
+    });
     build3DBiomeEnvironment(idx);
   }
 
@@ -1156,19 +1882,45 @@
     btn.addEventListener("click", () => {
       document.querySelectorAll("#archetype-grid .chip-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
+      triggerButtonPlagueSpread(btn);
       state.archetype = btn.dataset.archetype;
       previewPlayerStudio.rebuildMesh();
       previewEntityStudio.rebuildMesh();
     });
   });
 
+  // Difficulty Buttons (Easy = 1, Medium = 2, Hard = 3, Impossible = 4)
+  function selectDifficulty(diff, count) {
+    state.difficulty = diff;
+    state.enemyCount = Number(count) || 3;
+    document.querySelectorAll(".difficulty-btn").forEach((b) => {
+      const isMatch = b.dataset.difficulty === diff;
+      b.classList.toggle("active", isMatch);
+      if (isMatch) triggerButtonPlagueSpread(b);
+    });
+    if (state.running) {
+      rebuildMazeScene();
+    }
+    updateHUD();
+  }
+
+  document.querySelectorAll(".difficulty-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectDifficulty(btn.dataset.difficulty, btn.dataset.enemies);
+    });
+  });
+
   // Auto-Rotate Toggles
   document.getElementById("player-autorotate-btn").addEventListener("click", (e) => {
     state.playerAutoRotate = !state.playerAutoRotate;
+    e.currentTarget.classList.toggle("active", state.playerAutoRotate);
+    triggerButtonPlagueSpread(e.currentTarget);
     e.currentTarget.textContent = `Auto-Rotate: ${state.playerAutoRotate ? "ON" : "OFF"}`;
   });
   document.getElementById("entity-autorotate-btn").addEventListener("click", (e) => {
     state.entityAutoRotate = !state.entityAutoRotate;
+    e.currentTarget.classList.toggle("active", state.entityAutoRotate);
+    triggerButtonPlagueSpread(e.currentTarget);
     e.currentTarget.textContent = `Auto-Rotate: ${state.entityAutoRotate ? "ON" : "OFF"}`;
   });
 
@@ -1195,6 +1947,88 @@
     e.currentTarget.textContent = `Path Projection: ${state.showProjection ? "ON" : "OFF"}`;
   });
 
+  // Interactive Gameplay Camera Controls & Top Position Button
+  const camTopBtn = document.getElementById("hud-cam-top-btn");
+  if (camTopBtn) {
+    camTopBtn.addEventListener("click", () => {
+      state.topCameraMode = !state.topCameraMode;
+      camTopBtn.classList.toggle("cam-active", state.topCameraMode);
+      triggerButtonPlagueSpread(camTopBtn);
+      camTopBtn.textContent = state.topCameraMode ? "Cam: Top View (Active)" : "Cam: Top Position";
+    });
+  }
+
+  document.getElementById("btn-cam-orbit-left")?.addEventListener("click", () => {
+    state.camYawOffset -= 0.35;
+  });
+  document.getElementById("btn-cam-orbit-right")?.addEventListener("click", () => {
+    state.camYawOffset += 0.35;
+  });
+  document.getElementById("btn-cam-tilt-up")?.addEventListener("click", () => {
+    state.camPitchOffset = Math.min(9, state.camPitchOffset + 1.5);
+  });
+  document.getElementById("btn-cam-tilt-down")?.addEventListener("click", () => {
+    state.camPitchOffset = Math.max(-6, state.camPitchOffset - 1.5);
+  });
+  document.getElementById("btn-cam-zoom-in")?.addEventListener("click", () => {
+    state.camZoomOffset = Math.max(-5, state.camZoomOffset - 1.5);
+  });
+  document.getElementById("btn-cam-zoom-out")?.addEventListener("click", () => {
+    state.camZoomOffset = Math.min(8, state.camZoomOffset + 1.5);
+  });
+
+  // Drag / Orbit & Wheel Zoom directly on the Gameplay Maze Viewport
+  (() => {
+    const vp = document.getElementById("maze-viewport");
+    if (!vp) return;
+    let draggingCam = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    vp.addEventListener("mousedown", (e) => {
+      draggingCam = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!draggingCam) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      state.camYawOffset -= dx * 0.008;
+      state.camPitchOffset = Math.max(-6, Math.min(10, state.camPitchOffset + dy * 0.04));
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener("mouseup", () => {
+      draggingCam = false;
+    });
+
+    vp.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        draggingCam = true;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+    vp.addEventListener("touchmove", (e) => {
+      if (!draggingCam || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - lastX;
+      const dy = e.touches[0].clientY - lastY;
+      state.camYawOffset -= dx * 0.008;
+      state.camPitchOffset = Math.max(-6, Math.min(10, state.camPitchOffset + dy * 0.04));
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+    }, { passive: true });
+    vp.addEventListener("touchend", () => {
+      draggingCam = false;
+    });
+
+    vp.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      state.camZoomOffset = Math.max(-5, Math.min(9, state.camZoomOffset + (e.deltaY > 0 ? 0.9 : -0.9)));
+    }, { passive: false });
+  })();
+
   // Launch Game from Screen 2
   document.getElementById("launch-aeternus-btn").addEventListener("click", () => {
     document.getElementById("init-screen-2").classList.remove("active");
@@ -1203,7 +2037,7 @@
     state.level = 1;
     state.health = 100;
     state.shields = 1;
-    state.diamonds = 1;
+    state.diamonds = Math.max(1, state.storedDiamonds);
     rebuildMazeScene();
     state.running = true;
     state.paused = false;
@@ -1217,6 +2051,14 @@
     const data = JSON.parse(raw);
     if (data.savedSession) {
       Object.assign(state, data.savedSession);
+      if (typeof data.storedDiamonds === "number") {
+        state.diamonds = Math.max(state.diamonds, data.storedDiamonds);
+        state.storedDiamonds = state.diamonds;
+      }
+      if (state.playerColor === state.entityColor) {
+        state.entityColor = SWATCH_COLORS.find((c) => c !== state.playerColor) || "#fb7185";
+      }
+      syncDistinctColorSwatches();
       document.getElementById("init-screen-1").classList.remove("active");
       rebuildMazeScene();
       state.running = true;
@@ -1277,7 +2119,9 @@
   document.getElementById("revive-diamond-btn").addEventListener("click", () => {
     if (state.diamonds > 0) {
       state.diamonds--;
+      state.storedDiamonds = state.diamonds;
       state.health = 100;
+      saveProgress(true);
       document.getElementById("gameover-modal").classList.remove("active");
       runCountdownSequence(false, () => {
         state.paused = false;
