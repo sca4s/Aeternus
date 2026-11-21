@@ -683,3 +683,306 @@ body {
     flex-shrink: 0;
   }
 }
+
+/* ============================================================================
+   ADDITIVE ENHANCEMENTS: UNIFIED SCROLLING, PROPORTIONS, PLAGUE TRANSITIONS,
+   HIGH-CONTRAST SELECTED STATES (WHITE IN DARK / BLACK IN LIGHT) & MOBILE FIXES
+   ============================================================================ */
+
+/* Global Upper-Left Blurred Plague Spread Wave on Theme Switch */
+.global-plague-wave {
+  position: fixed;
+  top: -25vh;
+  left: -25vw;
+  width: 35vmax;
+  height: 35vmax;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0;
+  transform: scale(0.05);
+  transform-origin: top left;
+  filter: blur(36px);
+  background: radial-gradient(
+    circle,
+    var(--wave-core, rgba(255, 255, 255, 0.92)) 0%,
+    var(--wave-mid, rgba(216, 180, 254, 0.72)) 52%,
+    transparent 80%
+  );
+}
+
+.global-plague-wave.active-wave {
+  animation: globalPlagueWave 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes globalPlagueWave {
+  0% {
+    opacity: 0.96;
+    transform: scale(0.1);
+  }
+  60% {
+    opacity: 0.82;
+    transform: scale(8.5);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(11.5);
+  }
+}
+
+/* Individual Selectable Button Upper-Left Plague Spread Effect */
+.biome-btn,
+.chip-btn,
+.mini-pill,
+.pill-btn {
+  position: relative;
+  overflow: hidden;
+  transition:
+    background-color 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.22s ease;
+}
+
+.biome-btn::after,
+.chip-btn::after,
+.mini-pill::after,
+.pill-btn::after {
+  content: "";
+  position: absolute;
+  top: -45%;
+  left: -45%;
+  width: 45%;
+  height: 45%;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(10px);
+  opacity: 0;
+  transform: scale(0.1);
+  transform-origin: top left;
+  background: radial-gradient(
+    circle,
+    var(--btn-plague-color, rgba(255, 255, 255, 0.95)) 0%,
+    rgba(165, 180, 252, 0.65) 60%,
+    transparent 85%
+  );
+}
+
+.biome-btn.plague-select::after,
+.chip-btn.plague-select::after,
+.mini-pill.plague-select::after,
+.pill-btn.plague-select::after {
+  animation: btnPlagueSpread 0.68s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+@keyframes btnPlagueSpread {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.15);
+  }
+  65% {
+    opacity: 0.85;
+    transform: scale(9.5);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(12.5);
+  }
+}
+
+/* User-Selected UIs: WHITE in Dark Mode, BLACK in Light Mode */
+html[data-theme="dark"] .biome-btn.active,
+html[data-theme="dark"] .chip-btn.active,
+html[data-theme="dark"] .difficulty-btn.active,
+html[data-theme="dark"] .mini-pill.active,
+html[data-theme="dark"] .pill-btn.cam-active {
+  background: #ffffff !important;
+  color: #0d101b !important;
+  border-color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.28);
+}
+
+html[data-theme="light"] .biome-btn.active,
+html[data-theme="light"] .chip-btn.active,
+html[data-theme="light"] .difficulty-btn.active,
+html[data-theme="light"] .mini-pill.active,
+html[data-theme="light"] .pill-btn.cam-active {
+  background: #0d101b !important;
+  color: #ffffff !important;
+  border-color: #0d101b !important;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgba(13, 16, 27, 0.28);
+}
+
+/* Difficulty Grid */
+.difficulty-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.45rem;
+}
+
+/* Fix "Touch Mode" Badge Pill Wrapping & Extra Space Issue (Image 3) */
+.topbar-title-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+}
+
+.badge-pill {
+  white-space: nowrap !important;
+  width: fit-content !important;
+  min-width: max-content;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.82rem;
+  line-height: 1.1;
+  text-align: center;
+}
+
+/* Unified Main-Screen Scrolling on Initiation Screen 2 & Pause Modal (No Sub-Scrolls) */
+#init-screen-2,
+#pause-modal {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  align-items: flex-start !important;
+  padding: clamp(10px, 1.8vw, 22px);
+}
+
+#init-screen-2 .customizer-layout {
+  height: auto !important;
+  min-height: calc(100vh - clamp(20px, 3.6vw, 44px));
+  margin: 0 auto;
+  grid-template-rows: auto auto auto;
+}
+
+#init-screen-2 .customizer-grid {
+  overflow: visible !important;
+  height: auto !important;
+  align-items: stretch;
+}
+
+#init-screen-2 .biome-selector-card,
+#init-screen-2 .preview-card {
+  overflow: visible !important;
+  max-height: none !important;
+  height: auto !important;
+}
+
+/* Fix 360° Preview Canvas Framing so Pedestal Base is Never Cut Off (Images 1 & 3) */
+.preview-canvas-wrap {
+  min-height: clamp(210px, 26vh, 300px) !important;
+  aspect-ratio: 1 / 0.92;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.high-records-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: center;
+  font-size: 0.9em;
+}
+
+/* Locked Swatch Styling so Avatar & Entity Cannot Share Same Color */
+.color-swatch {
+  position: relative;
+}
+
+.color-swatch.locked-swatch {
+  opacity: 0.22;
+  cursor: not-allowed;
+  transform: scale(0.92);
+  filter: grayscale(0.4);
+}
+
+.color-swatch.locked-swatch::after {
+  content: "✕";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* Mobile & Compact Screen Proportion Fixes (Image 2 & Image 3) */
+@media (max-width: 980px) {
+  body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .customizer-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+
+  .topbar-title-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .topbar-toggles {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .topbar-toggles .pill-btn {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 0.42rem 0.55rem;
+    font-size: 0.76em;
+  }
+
+  .biome-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .biome-grid.compact {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Gameplay Shell on Mobile: Full Maze Visibility + Scrollable Clean HUD Grids */
+  .game-shell {
+    height: auto !important;
+    min-height: 100dvh;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto minmax(340px, 52dvh) auto !important;
+    gap: 8px;
+    padding: 8px;
+    overflow-y: auto;
+  }
+
+  .ui-dock {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 8px;
+    overflow: visible !important;
+    width: 100%;
+  }
+
+  .hud-module {
+    min-width: 0 !important;
+    width: 100%;
+    max-height: none !important;
+    padding: 10px;
+  }
+
+  .maze-stage-column {
+    height: clamp(340px, 52dvh, 520px);
+    width: 100%;
+  }
+}
