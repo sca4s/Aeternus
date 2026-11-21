@@ -9,6 +9,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
+  <!-- Full-Screen Blurred Upper-Left Theme Wave Overlay -->
+  <div id="global-plague-wave" class="global-plague-wave"></div>
+
   <!-- INITIATION SCREEN 1: CONTROL MODE SELECTION (STRICTLY 2 MODES) -->
   <section id="init-screen-1" class="overlay-screen active">
     <div class="ui-card init-card" data-plague-card>
@@ -86,6 +89,14 @@
             <button class="chip-btn" data-archetype="bird" type="button">Songbird vs Vultures</button>
             <button class="chip-btn" data-archetype="car" type="button">Racer vs Police Cruisers</button>
           </div>
+
+          <h3 class="section-label" style="margin-top: 0.85rem;">Difficulty &amp; Pursuer Count</h3>
+          <div id="difficulty-grid" class="difficulty-grid">
+            <button class="chip-btn difficulty-btn" data-difficulty="easy" data-enemies="1" type="button">Easy (1 Entity)</button>
+            <button class="chip-btn difficulty-btn" data-difficulty="medium" data-enemies="2" type="button">Medium (2 Entities)</button>
+            <button class="chip-btn difficulty-btn active" data-difficulty="hard" data-enemies="3" type="button">Hard (3 Entities)</button>
+            <button class="chip-btn difficulty-btn" data-difficulty="impossible" data-enemies="4" type="button">Impossible (4 Entities)</button>
+          </div>
         </div>
 
         <!-- Center Column: Player 360° Interactive Preview & Touchable Swatches -->
@@ -98,7 +109,7 @@
             <canvas id="player-preview-canvas"></canvas>
             <span class="drag-hint">Touch / Drag 360°</span>
           </div>
-          <div class="swatch-label">Tap Avatar Color</div>
+          <div class="swatch-label">Tap Avatar Color (Cannot match Entity)</div>
           <div id="player-color-swatches" class="swatch-grid"></div>
         </div>
 
@@ -112,7 +123,7 @@
             <canvas id="entity-preview-canvas"></canvas>
             <span class="drag-hint">Touch / Drag 360°</span>
           </div>
-          <div class="swatch-label">Tap Pursuer Color</div>
+          <div class="swatch-label">Tap Pursuer Color (Cannot match Avatar)</div>
           <div id="entity-color-swatches" class="swatch-grid"></div>
         </div>
       </div>
@@ -122,6 +133,7 @@
         <div class="high-records-preview">
           <span>Best Score: <strong id="init-high-score">0</strong></span>
           <span>Longest Run: <strong id="init-high-time">00:00</strong></span>
+          <span>Stored Diamonds: <strong id="init-diamonds">1</strong> ♦</span>
         </div>
         <button id="launch-aeternus-btn" class="launch-btn" type="button">ENTER AETERNUS</button>
       </div>
@@ -142,6 +154,8 @@
         <div class="stat-row"><span>High Score</span><strong id="hud-high-score">0</strong></div>
         <div class="stat-row"><span>Time</span><strong id="hud-time">00:00</strong></div>
         <div class="stat-row"><span>Best Time</span><strong id="hud-high-time">00:00</strong></div>
+        <div class="stat-row"><span>Stored Diamonds</span><strong id="hud-stored-diamonds">1</strong></div>
+        <div class="stat-row"><span>Difficulty</span><strong id="hud-difficulty">Hard (3)</strong></div>
         <div class="stat-row"><span>Sanctum Level</span><strong id="hud-level">1</strong></div>
       </div>
 
@@ -206,6 +220,19 @@
         </div>
         <div class="control-stack">
           <button id="hud-pause-btn" class="pill-btn accent-btn" type="button">Pause / Customize</button>
+          <button id="hud-cam-top-btn" class="pill-btn" type="button">Cam: Top Position</button>
+          <div class="mini-btn-row">
+            <button id="btn-cam-orbit-left" class="mini-pill" type="button">Cam ↺</button>
+            <button id="btn-cam-orbit-right" class="mini-pill" type="button">Cam ↻</button>
+          </div>
+          <div class="mini-btn-row">
+            <button id="btn-cam-tilt-up" class="mini-pill" type="button">Tilt ▲</button>
+            <button id="btn-cam-tilt-down" class="mini-pill" type="button">Tilt ▼</button>
+          </div>
+          <div class="mini-btn-row">
+            <button id="btn-cam-zoom-in" class="mini-pill" type="button">Zoom +</button>
+            <button id="btn-cam-zoom-out" class="mini-pill" type="button">Zoom -</button>
+          </div>
           <button id="hud-theme-btn" class="pill-btn" type="button">Switch Theme</button>
           <button id="hud-graphics-btn" class="pill-btn" type="button">Mode: Modern 3D</button>
           <button id="hud-projection-btn" class="pill-btn" type="button">Path Projection: ON</button>
@@ -253,11 +280,21 @@
   <section id="pause-modal" class="overlay-screen">
     <div class="ui-card pause-card" data-plague-card>
       <h2 class="gothic-heading">CHRONICLE PAUSED</h2>
-      <p class="subtitle">Progress automatically preserved in memory</p>
+      <p class="subtitle">Progress &amp; diamonds automatically preserved in memory</p>
 
       <div class="pause-section">
         <span class="section-label">Switch Live 3D Biome</span>
         <div id="pause-biome-grid" class="biome-grid compact"></div>
+      </div>
+
+      <div class="pause-section">
+        <span class="section-label">Switch Difficulty Mode</span>
+        <div id="pause-difficulty-grid" class="difficulty-grid">
+          <button class="chip-btn difficulty-btn" data-difficulty="easy" data-enemies="1" type="button">Easy (1)</button>
+          <button class="chip-btn difficulty-btn" data-difficulty="medium" data-enemies="2" type="button">Medium (2)</button>
+          <button class="chip-btn difficulty-btn active" data-difficulty="hard" data-enemies="3" type="button">Hard (3)</button>
+          <button class="chip-btn difficulty-btn" data-difficulty="impossible" data-enemies="4" type="button">Impossible (4)</button>
+        </div>
       </div>
 
       <div class="pause-toggles-row">
